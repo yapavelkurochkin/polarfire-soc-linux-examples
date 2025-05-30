@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <stdint.h>
+#include <string.h>
 
 #define BUFFSIZE 4096
 
@@ -16,6 +18,13 @@
 #define SERIAL_RESP_SIZE 16u
 #define SERIAL_OFFSET 0u
 #define SERIAL_DEVICE "/dev/mpfs_generic_service"
+
+#define DESINFO_COMMAND 2u
+typedef struct ss_design_info {
+	uint8_t id[32];
+	uint16_t version;
+	uint16_t backlevel;
+} __attribute__((packed)) ss_design_info_t;
 
 #define DIGEST_COMMAND 0x4u
 #define DIGEST_MSG_SIZE 0u
@@ -31,6 +40,14 @@
 #define SIGN_OFFSET 0u
 #define SIGN_DEVICE "/dev/mpfs_generic_service"
 
+#define SS_DEVICE "/dev/mpfs_generic_service"
+typedef struct cmd {
+    unsigned int command,
+				msg_size, 
+				resp_size, 
+				send_offset, 
+				response_offset;
+} ss_cmd_t;
 
 static void display_output(char *data, unsigned int byte_length)
 {
@@ -52,6 +69,54 @@ static void display_output(char *data, unsigned int byte_length)
     printf("%s\n", buffer);
 }
 
+
+// resp should be of a proper response size
+static int ss_request(const ss_cmd_t* cmd, void *resp)
+{
+    FILE *fptr = NULL;
+	if (access(SS_DEVICE, F_OK))
+	{
+		printf("Error! file doesnt exist\n");
+		exit(1);
+	}
+	else if ((fptr = fopen(SS_DEVICE, "w")) == NULL)
+	{
+		printf("Error! opening file\n");
+		exit(1);
+	}
+
+	fprintf(fptr, "%c%c%c%c%c%c%c%c%c",
+			cmd->command,
+			(char)cmd->msg_size, (char)(cmd->msg_size >> 8),
+			(char)cmd->resp_size, (char)(cmd->resp_size >> 8),
+			(char)cmd->send_offset, (char)(cmd->send_offset >> 8),
+			(char)cmd->response_offset, (char)(cmd->response_offset >> 8));
+
+	fclose(fptr);
+	if ((fptr = fopen(SS_DEVICE, "r")) == NULL)
+	{
+		printf("Error! opening file\n");
+		exit(1);
+	}
+
+	int ret = 0;	
+	uint8_t buf[4096] = {0};
+	ret = fread(buf, cmd->resp_size + 1/*status*/, 1, fptr);
+	if (ret != 1)
+	{
+		printf("Error reading status\n");
+		exit(1);
+	} else if (buf[0] != 0) {
+		printf("Request %d failed\n", cmd->command);
+		exit(1);
+	}
+
+	memcpy(resp, &buf[1], cmd->resp_size);
+
+	fclose(fptr);
+	return 0;
+}
+
 int main()
 {
     unsigned char inbuff[BUFFSIZE];
@@ -63,7 +128,13 @@ int main()
     for (;/*ever*/;)
     {
         printf("PolarFire SoC system services example program.\r\nPress:\r\n");
-        printf("1 - to show the FPGA device serial number\r\n2 - to show the FPGA device digests\r\n3 - continuously output random numbers from the TRNG, until ctrl+c\r\n4 - to request an ECDSA signature\r\ne - to exit this program\r\n");
+        printf("1 - to show the FPGA device serial number\r\n"
+				"2 - to show the FPGA device digests\r\n"
+				"3 - continuously output random numbers from the TRNG, until ctrl+c\r\n"
+				"4 - to request an ECDSA signature\r\n"
+				"5 - to request design info\r\n"
+				"e - to exit this program\r\n"
+				);
         chr = getchar();
         getchar();
 
@@ -215,6 +286,23 @@ int main()
             }
             fclose(fptr);
             break;
+		case '5':
+			{
+				ss_cmd_t cmd;
+				cmd.command = DESINFO_COMMAND;
+				cmd.msg_size = 0;
+				cmd.resp_size = sizeof(ss_design_info_t);
+				cmd.send_offset = 0;	
+				cmd.response_offset = 0;	
+
+				ss_design_info_t info;
+				if (0 == ss_request(&cmd, &info))
+				{
+					printf("version %05d\n", info.version);
+				}
+				printf("\n");
+			}
+			break;
         case 'e':
             return 0;
 
