@@ -19,6 +19,9 @@
 #define SERIAL_OFFSET 0u
 #define SERIAL_DEVICE "/dev/mpfs_generic_service"
 
+#define USERCODE_COMMAND 1u
+#define USERCODE_RESP_SIZE 4u
+
 #define DESINFO_COMMAND 2u
 typedef struct ss_design_info {
 	uint8_t id[32];
@@ -133,6 +136,7 @@ int main()
 				"3 - continuously output random numbers from the TRNG, until ctrl+c\r\n"
 				"4 - to request an ECDSA signature\r\n"
 				"5 - to request design info\r\n"
+				"6 - to request usercode (Silicon ID)\r\n"
 				"e - to exit this program\r\n"
 				);
         chr = getchar();
@@ -299,6 +303,23 @@ int main()
 				if (0 == ss_request(&cmd, &info))
 				{
 					printf("version %05d\n", info.version);
+				}
+				printf("\n");
+			}
+			break;
+		case '6':
+			{
+				ss_cmd_t cmd;
+				cmd.command = USERCODE_COMMAND;
+				cmd.msg_size = 0;
+				cmd.resp_size = USERCODE_RESP_SIZE;
+				cmd.send_offset = 0;	
+				cmd.response_offset = 0;	
+
+				uint32_t usercode;
+				if (0 == ss_request(&cmd, &usercode))
+				{
+					printf("usercode %d\n", usercode);
 				}
 				printf("\n");
 			}
